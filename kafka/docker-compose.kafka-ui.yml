@@ -1,0 +1,19 @@
+# Pedidos360 - Kafka UI. Levantar DESPUES de docker-compose.kafka.yml (usa su red).
+name: pedidos360-kafka-ui
+
+services:
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: kafka-ui
+    ports: ["8090:8080"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: pedidos360
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka1:29092,kafka2:29092,kafka3:29092
+      DYNAMIC_CONFIG_ENABLED: "false"
+    networks: [kafka-net]
+    restart: unless-stopped
+
+networks:
+  kafka-net:
+    name: pedidos360-kafka-net
+    external: true
