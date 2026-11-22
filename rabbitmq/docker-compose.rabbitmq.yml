@@ -1,0 +1,53 @@
+services:
+  rabbit1:
+    image: rabbitmq:3.13-management
+    container_name: rabbit1
+    hostname: rabbit1
+    restart: unless-stopped
+    environment:
+      COOKIE_COMPARTIDA: ${RABBITMQ_ERLANG_COOKIE:-pedidos360-cookie-local}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-admin123}
+    # Escribe la cookie de Erlang con dueno y permisos correctos y luego arranca RabbitMQ
+    command:
+      - sh
+      - -c
+      - |
+        printf '%s' "$$COOKIE_COMPARTIDA" > /var/lib/rabbitmq/.erlang.cookie
+        chown rabbitmq:rabbitmq /var/lib/rabbitmq/.erlang.cookie
+        chmod 600 /var/lib/rabbitmq/.erlang.cookie
+        exec docker-entrypoint.sh rabbitmq-server
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/conf.d/20-cluster.conf:ro
+      - rabbit1-data:/var/lib/rabbitmq
+
+  rabbit2:
+    image: rabbitmq:3.13-management
+    container_name: rabbit2
+    hostname: rabbit2
+    restart: unless-stopped
+    environment:
+      COOKIE_COMPARTIDA: ${RABBITMQ_ERLANG_COOKIE:-pedidos360-cookie-local}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-admin123}
+    command:
+      - sh
+      - -c
+      - |
+        printf '%s' "$$COOKIE_COMPARTIDA" > /var/lib/rabbitmq/.erlang.cookie
+        chown rabbitmq:rabbitmq /var/lib/rabbitmq/.erlang.cookie
+        chmod 600 /var/lib/rabbitmq/.erlang.cookie
+        exec docker-entrypoint.sh rabbitmq-server
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/conf.d/20-cluster.conf:ro
+      - rabbit2-data:/var/lib/rabbitmq
+
+volumes:
+  rabbit1-data:
+  rabbit2-data:
