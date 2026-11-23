@@ -110,7 +110,7 @@ services:
 networks:
   app: {}
   kafka:
-    name: kafka_default
+    name: pedidos360-kafka-net
     external: true
   rabbit:
     name: rabbitmq_default
