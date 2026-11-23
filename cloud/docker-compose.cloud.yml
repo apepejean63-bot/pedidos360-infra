@@ -1,5 +1,17 @@
 # Aplicacion completa en la nube. Kafka y RabbitMQ corren en sus propios compose
 # (carpetas kafka y rabbitmq) y aqui nos unimos a sus redes.
+x-java-build: &java-build
+  dockerfile_inline: |
+    FROM maven:3.9-eclipse-temurin-17 AS build
+    WORKDIR /app
+    COPY pom.xml .
+    COPY src ./src
+    RUN mvn -B -q -DskipTests package
+    FROM eclipse-temurin:17-jre
+    WORKDIR /app
+    COPY --from=build /app/target/*.jar app.jar
+    ENTRYPOINT ["java", "-jar", "app.jar"]
+
 x-java: &java
   restart: unless-stopped
   environment: &java-env
@@ -24,8 +36,8 @@ services:
   pedidos-service:
     <<: *java
     build:
+      <<: *java-build
       context: ../../pedidos360-backend/pedidos-service
-      dockerfile: ../../pedidos360-infra/cloud/Dockerfile.java
     environment:
       <<: *java-env
       DB_HOST: mysql
@@ -47,8 +59,8 @@ services:
   bff-service:
     <<: *java
     build:
+      <<: *java-build
       context: ../../pedidos360-backend/bff-service
-      dockerfile: ../../pedidos360-infra/cloud/Dockerfile.java
     environment:
       <<: *java-env
       AZURE_TENANT_ID: ${AZURE_TENANT_ID}
@@ -60,8 +72,8 @@ services:
   notificaciones-service:
     <<: *java
     build:
+      <<: *java-build
       context: ../../pedidos360-backend/notificaciones-service
-      dockerfile: ../../pedidos360-infra/cloud/Dockerfile.java
     environment:
       <<: *java-env
       KAFKA_BOOTSTRAP_SERVERS: kafka1:29092,kafka2:29092,kafka3:29092
@@ -70,8 +82,8 @@ services:
   kafka-admin-service:
     <<: *java
     build:
+      <<: *java-build
       context: ../../pedidos360-backend/kafka-admin-service
-      dockerfile: ../../pedidos360-infra/cloud/Dockerfile.java
     environment:
       <<: *java-env
       KAFKA_BOOTSTRAP_SERVERS: kafka1:29092,kafka2:29092,kafka3:29092
@@ -80,8 +92,8 @@ services:
   rabbit-admin-service:
     <<: *java
     build:
+      <<: *java-build
       context: ../../pedidos360-backend/rabbit-admin-service
-      dockerfile: ../../pedidos360-infra/cloud/Dockerfile.java
     environment:
       <<: *java-env
       RABBITMQ_ADDRESSES: rabbit1:5672,rabbit2:5672
@@ -93,10 +105,22 @@ services:
     restart: unless-stopped
     build:
       context: ../../pedidos360-frontend
-      dockerfile: ../../pedidos360-infra/cloud/Dockerfile.frontend
       args:
         SITE_URL: https://${DOMAIN}
         API_BASE_URL: ${API_BASE_URL:-https://${DOMAIN}/api/v1}
+      dockerfile_inline: |
+        FROM node:20-alpine AS build
+        WORKDIR /app
+        COPY package*.json ./
+        RUN npm ci || npm install
+        COPY . .
+        ARG SITE_URL
+        ARG API_BASE_URL
+        RUN sed -i "s#msalRedirectUri: '[^']*'#msalRedirectUri: '$${SITE_URL}'#; s#apiBaseUrl: '[^']*'#apiBaseUrl: '$${API_BASE_URL}'#" src/environments/environment.ts
+        RUN npx ng build
+        RUN mkdir /out && if [ -d dist/pedidos360-frontend/browser ]; then cp -r dist/pedidos360-frontend/browser/. /out; else cp -r dist/pedidos360-frontend/. /out; fi
+        FROM caddy:2-alpine
+        COPY --from=build /out /srv/frontend
     environment:
       DOMAIN: ${DOMAIN}
     ports:
