@@ -1,0 +1,121 @@
+# Aplicacion completa en la nube. Kafka y RabbitMQ corren en sus propios compose
+# (carpetas kafka y rabbitmq) y aqui nos unimos a sus redes.
+x-java: &java
+  restart: unless-stopped
+  environment: &java-env
+    JAVA_TOOL_OPTIONS: "-Xmx300m"
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: pedidos360
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [app]
+
+  pedidos-service:
+    <<: *java
+    build:
+      context: ../../pedidos360-backend/pedidos-service
+      dockerfile: ../../pedidos360-infra/cloud/Dockerfile.java
+    environment:
+      <<: *java-env
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: pedidos360
+      DB_USERNAME: root
+      DB_PASSWORD: ${DB_PASSWORD}
+      RABBITMQ_ADDRESSES: rabbit1:5672,rabbit2:5672
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka1:29092,kafka2:29092,kafka3:29092
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+      AZURE_CLIENT_ID_BACKEND: ${AZURE_CLIENT_ID_BACKEND}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks: [app, kafka, rabbit]
+
+  bff-service:
+    <<: *java
+    build:
+      context: ../../pedidos360-backend/bff-service
+      dockerfile: ../../pedidos360-infra/cloud/Dockerfile.java
+    environment:
+      <<: *java-env
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+      AZURE_CLIENT_ID_BACKEND: ${AZURE_CLIENT_ID_BACKEND}
+      PEDIDOS_SERVICE_URL: http://pedidos-service:8081
+      CORS_ALLOWED_ORIGINS: https://${DOMAIN}
+    networks: [app]
+
+  notificaciones-service:
+    <<: *java
+    build:
+      context: ../../pedidos360-backend/notificaciones-service
+      dockerfile: ../../pedidos360-infra/cloud/Dockerfile.java
+    environment:
+      <<: *java-env
+      KAFKA_BOOTSTRAP_SERVERS: kafka1:29092,kafka2:29092,kafka3:29092
+    networks: [app, kafka]
+
+  kafka-admin-service:
+    <<: *java
+    build:
+      context: ../../pedidos360-backend/kafka-admin-service
+      dockerfile: ../../pedidos360-infra/cloud/Dockerfile.java
+    environment:
+      <<: *java-env
+      KAFKA_BOOTSTRAP_SERVERS: kafka1:29092,kafka2:29092,kafka3:29092
+    networks: [app, kafka]
+
+  rabbit-admin-service:
+    <<: *java
+    build:
+      context: ../../pedidos360-backend/rabbit-admin-service
+      dockerfile: ../../pedidos360-infra/cloud/Dockerfile.java
+    environment:
+      <<: *java-env
+      RABBITMQ_ADDRESSES: rabbit1:5672,rabbit2:5672
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    networks: [app, rabbit]
+
+  frontend:
+    restart: unless-stopped
+    build:
+      context: ../../pedidos360-frontend
+      dockerfile: ../../pedidos360-infra/cloud/Dockerfile.frontend
+      args:
+        SITE_URL: https://${DOMAIN}
+        API_BASE_URL: ${API_BASE_URL:-https://${DOMAIN}/api/v1}
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    networks: [app]
+
+networks:
+  app: {}
+  kafka:
+    name: kafka_default
+    external: true
+  rabbit:
+    name: rabbitmq_default
+    external: true
+
+volumes:
+  mysql-data:
+  caddy-data:

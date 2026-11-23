@@ -1,0 +1,15 @@
+{$DOMAIN} {
+    encode gzip
+
+    # La API pasa por el BFF
+    handle /api/* {
+        reverse_proxy bff-service:8080
+    }
+
+    # El resto es la aplicacion Angular
+    handle {
+        root * /srv/frontend
+        try_files {path} /index.html
+        file_server
+    }
+}
